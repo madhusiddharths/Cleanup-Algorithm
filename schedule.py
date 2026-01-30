@@ -27,19 +27,25 @@ base_by_inhouse = config["base_by_inhouse"]
 # Build per-person base (ONE-TIME mapping)
 # ---------------------------
 base_by_person = {}
+out_house_people = []
 for _, row in df.iterrows():
     name = row["name"]
 
-    # Normalize inhouse (handles 2, 2.0, "2")
+    # Read inhouse strictly and normalize
     try:
-        inhouse = str(int(row["inhouse"]))
-    except (ValueError, TypeError):
-        inhouse = "1"  # safe default (out-of-house)
-
-    if inhouse not in base_by_inhouse:
+        inhouse_int = int(float(row["inhouse"]))
+    except ValueError:
         raise ValueError(f"Invalid inhouse value for {name}: {row['inhouse']}")
 
-    base_by_person[name] = base_by_inhouse[inhouse]
+    inhouse = str(inhouse_int).strip()
+    if inhouse not in {"0", "1", "2", "3"}:
+        raise ValueError(f"Invalid inhouse value for {name}: {row['inhouse']}")
+
+    if inhouse in {"2", "3"}:
+        base_by_person[name] = base_by_inhouse[inhouse]
+    else:
+        base_by_person[name] = {}  # out-of-house follow round-robin
+        out_house_people.append(name)
 
 # ---------------------------
 # Load or initialize checkpoint
@@ -52,7 +58,8 @@ else:
         "current_week": 0,
         "assigned_so_far": {},
         "last_cleanup": {},
-        "weekly_history": {}
+        "weekly_history": {},
+        "round_robin_index": 0  # track out-of-house rotation
     }
 
 current_week = checkpoint["current_week"] + 1
@@ -78,7 +85,7 @@ for name in names:
 # ---------------------------
 # Run ONE week (ALL logic inside cleanup.py)
 # ---------------------------
-weekly_assignments = schedule_one_week_final(
+weekly_assignments, round_robin_index = schedule_one_week_final(
     current_week,
     df,
     cleanup_types,
@@ -86,20 +93,17 @@ weekly_assignments = schedule_one_week_final(
     base_by_person,
     assigned_so_far,
     last_cleanup,
-    num_weeks
+    num_weeks,
+    out_house_people,
+    checkpoint.get("round_robin_index", 0)
 )
-
-print(f"\n📆 Week {current_week} assignments:")
-for person, cleanup in weekly_assignments.items():
-    print(f"{person}: {cleanup}")
 
 # ---------------------------
 # Update checkpoint
 # ---------------------------
+checkpoint["round_robin_index"] = round_robin_index
 checkpoint["current_week"] = current_week
-checkpoint["assigned_so_far"] = {
-    name: dict(assigned_so_far[name]) for name in names
-}
+checkpoint["assigned_so_far"] = {name: dict(assigned_so_far[name]) for name in names}
 checkpoint["last_cleanup"] = last_cleanup
 checkpoint["weekly_history"][str(current_week)] = weekly_assignments
 
@@ -107,7 +111,7 @@ with open(CHECKPOINT_FILE, "w") as f:
     json.dump(checkpoint, f, indent=4)
 
 # ---------------------------
-# Save updated actives.xlsx
+# Update actives.xlsx
 # ---------------------------
 df.to_excel(EXCEL_FILE, index=False)
 print(f"✅ Week {current_week} scheduled and saved.")
@@ -116,17 +120,13 @@ print("📘 actives.xlsx updated with latest counts")
 # ---------------------------
 # Save pivoted weekly assignments Excel
 # ---------------------------
-# Build pivoted DataFrame: week × person
 all_weeks = []
 for wk, assignments in checkpoint["weekly_history"].items():
     row = {"week": int(wk)}
-    row.update(assignments)  # person: cleanup
+    row.update(assignments)
     all_weeks.append(row)
 
 weekly_df = pd.DataFrame(all_weeks)
-# Sort by week
 weekly_df = weekly_df.sort_values("week").reset_index(drop=True)
-
-# Save Excel
 weekly_df.to_excel(WEEKLY_EXCEL_FILE, index=False)
 print(f"✅ Weekly assignments saved to {WEEKLY_EXCEL_FILE}")

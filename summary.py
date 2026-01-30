@@ -86,6 +86,12 @@ for name in names:
 deviation_warning_df = pd.DataFrame(deviation_warning_rows)
 
 # ---------------------------
+# Filter Names
+# ---------------------------
+in_house_names = [n for n in names if inhouse_map.get(n, "1") in {"2", "3"}]
+ooh_names = [n for n in names if inhouse_map.get(n, "1") in {"0", "1"}]
+
+# ---------------------------
 # 3️⃣ Assigned cleanups per person
 # ---------------------------
 summary = pd.DataFrame.from_dict(
@@ -93,25 +99,31 @@ summary = pd.DataFrame.from_dict(
     orient="index"
 ).fillna(0)
 
-summary = summary.reindex(columns=cleanup_types, fill_value=0)
+# Ensure all names are present, even if they had 0 cleanups
+summary = summary.reindex(index=names, columns=cleanup_types, fill_value=0)
 summary["total"] = summary.sum(axis=1)
 
-# ---------------------------
-# 4️⃣ Deviation from theoretical base (PER PERSON)
-# ---------------------------
-deviation = pd.DataFrame(index=summary.index)
+# Split summaries
+in_house_summary = summary.loc[in_house_names]
+ooh_summary = summary.loc[ooh_names]
 
-for name in names:
+# ---------------------------
+# 4️⃣ Deviation from theoretical base (IN-HOUSE ONLY)
+# ---------------------------
+# Start as object type to allow both numbers and empty strings
+deviation = in_house_summary.copy().astype(object)
+
+for name in in_house_names:
     inhouse_val = inhouse_map.get(name, "1")
     person_base = base_by_inhouse.get(inhouse_val, global_base)
 
     for c in cleanup_types:
         if c in person_base:
-            deviation.loc[name, c] = summary.loc[name, c] - person_base[c]
+            deviation.loc[name, c] = in_house_summary.loc[name, c] - person_base[c]
         else:
             deviation.loc[name, c] = ""  # not applicable
 
-deviation["total"] = summary["total"]
+deviation["total"] = in_house_summary["total"]
 
 # ---------------------------
 # Save everything to Excel
@@ -127,10 +139,15 @@ with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
         index=False,
         sheet_name="Deviation Warnings"
     )
-    summary.to_excel(
+    in_house_summary.to_excel(
         writer,
         index=True,
-        sheet_name="Assignments"
+        sheet_name="In-House Assignments"
+    )
+    ooh_summary.to_excel(
+        writer,
+        index=True,
+        sheet_name="Out-of-House Rotation"
     )
     deviation.to_excel(
         writer,

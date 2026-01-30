@@ -51,6 +51,10 @@ for person, cleanup in week_assignments.items():
 del checkpoint["weekly_history"][week_to_delete]
 checkpoint["current_week"] -= 1
 
+# Roll back round-robin index
+if "round_robin_index" in checkpoint and checkpoint["round_robin_index"] > 0:
+    checkpoint["round_robin_index"] -= 1
+
 # ---------------------------
 # Recompute last_cleanup from remaining weeks
 # ---------------------------

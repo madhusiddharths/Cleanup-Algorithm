@@ -81,7 +81,8 @@ new_checkpoint = {
     "current_week": 1,
     "assigned_so_far": assigned_so_far,
     "last_cleanup": last_cleanup,
-    "weekly_history": weekly_history
+    "weekly_history": weekly_history,
+    "round_robin_index": 1
 }
 
 # ---------------------------

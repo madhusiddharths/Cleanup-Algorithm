@@ -37,18 +37,21 @@ if "week" not in weekly_df.columns:
 person_columns = [c for c in weekly_df.columns if c != "week"]
 
 # ---------------------------
-# Build assigned_so_far and last_cleanup
+# Load actives.xlsx to preserve all original columns
 # ---------------------------
-assigned_so_far = {}
-last_cleanup = {}
+df = pd.read_excel(ACTIVES_FILE)
+names_in_df = df["name"].tolist()
+
+# ---------------------------
+# Initialize assigned_so_far and last_cleanup
+# ---------------------------
+assigned_so_far = {name: defaultdict(int) for name in names_in_df}
+last_cleanup = {name: None for name in names_in_df}
 weekly_history = {}
 
-# Initialize all counts to zero
-for person in person_columns:
-    assigned_so_far[person] = defaultdict(int)
-    last_cleanup[person] = None
-
+# ---------------------------
 # Process each week in order
+# ---------------------------
 for _, row in weekly_df.sort_values("week").iterrows():
     week = int(row["week"])
     weekly_assignments = {}
@@ -70,32 +73,29 @@ checkpoint = {
     "current_week": int(current_week),
     "assigned_so_far": {p: dict(assigned_so_far[p]) for p in assigned_so_far},
     "last_cleanup": last_cleanup,
-    "weekly_history": weekly_history
+    "weekly_history": weekly_history,
+    "round_robin_index": int(current_week)
 }
 
 with open(CHECKPOINT_FILE, "w") as f:
     json.dump(checkpoint, f, indent=4)
 
-print(f"✅ checkpoint.json rebuilt from {WEEKLY_EXCEL_FILE}")
+print(f"✅ checkpoint.json rebuilt from {WEEKLY_EXCEL_FILE} with round-robin info")
 
 # ---------------------------
-# Rebuild actives.xlsx
+# Rebuild actives.xlsx WITHOUT dropping existing columns
 # ---------------------------
-df = pd.DataFrame({"name": person_columns})
-
 # Ensure all cleanup columns exist
-cleanup_columns = set()
-for counts in assigned_so_far.values():
-    cleanup_columns.update(counts.keys())
+for c in cleanup_types:
+    if c not in df.columns:
+        df[c] = 0
 
-for col in cleanup_columns:
-    df[col] = 0
-
-# Fill counts
+# Fill counts from assigned_so_far
 for idx, row in df.iterrows():
     name = row["name"]
-    for c in cleanup_columns:
-        df.at[idx, c] = assigned_so_far[name].get(c, 0)
+    if name in assigned_so_far:
+        for c in cleanup_types:
+            df.at[idx, c] = assigned_so_far[name].get(c, 0)
 
 df.to_excel(ACTIVES_FILE, index=False)
-print(f"✅ {ACTIVES_FILE} rebuilt with cumulative counts")
+print(f"✅ {ACTIVES_FILE} rebuilt with cumulative counts (all original columns preserved)")
