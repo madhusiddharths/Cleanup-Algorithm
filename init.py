@@ -113,7 +113,7 @@ for k, v in per_week_actual.items():
 exact = {k: (v * num_weeks) / inhouse_count for k, v in per_week_actual.items()}
 global_base = {k: int(exact[k]) for k in exact}
 
-missing = inhouse_count - sum(global_base.values())
+missing = num_weeks - sum(global_base.values())
 fractions = sorted(exact.keys(), key=lambda k: exact[k] - global_base[k], reverse=True)
 for k in fractions[:missing]:
     global_base[k] += 1
