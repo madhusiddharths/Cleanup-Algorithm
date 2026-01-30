@@ -51,10 +51,17 @@ def schedule_one_week_final(
 
         person_remaining[person] = remaining
 
+    # -------------------------------------------------
+    # Assign IN-HOUSE people first (2 & 3)
+    # -------------------------------------------------
+    # Sort cleanup types by number of eligible in-house people (fewer candidates first)
+    # This ensures people with restricted types (like bathrooms) are prioritized for them.
+    eligible_counts = {c: sum(1 for p in in_house_people if c in base_by_person[p]) for c in cleanup_types}
+    sorted_cleanup_types = sorted(cleanup_types, key=lambda c: eligible_counts[c])
+
     cleanup_slots_assigned = {c: [] for c in cleanup_types}
 
-    # Assign in-house people based on deficit and available slots
-    for cleanup in cleanup_types:
+    for cleanup in sorted_cleanup_types:
         slots = per_week_actual[cleanup]
         candidates = []
 
@@ -66,11 +73,15 @@ def schedule_one_week_final(
             if assigned_so_far[person].get(cleanup, 0) >= base_by_person[person][cleanup] + 1:
                 continue
 
+            # Calculate total remaining across all their cleanups as a secondary weight
+            total_person_deficit = sum(person_deficit[person].values())
+
             candidates.append(
                 (
-                    person_deficit[person][cleanup],
-                    -person_remaining[person],
-                    random.random(),
+                    person_deficit[person][cleanup],    # primary: deficit for THIS cleanup
+                    total_person_deficit,               # secondary: total remaining deficit
+                    -person_remaining[person],           # tertiary: fewer types left to do
+                    random.random(),                    # tie-breaker
                     person
                 )
             )
