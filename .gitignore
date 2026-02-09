@@ -30,3 +30,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Backups
+backup_remove_*/
