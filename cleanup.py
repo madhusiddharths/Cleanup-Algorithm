@@ -22,7 +22,9 @@ def schedule_one_week_final(
     - Returns (week_assignment, updated_round_robin_index)
     """
 
-    names = list(df["name"])
+    if "availability" not in df.columns:
+        df["availability"] = 1
+    names = df[df["availability"] == 1]["name"].tolist()
     random.shuffle(names)
 
     out_house_people = list(out_house_people)
@@ -105,6 +107,9 @@ def schedule_one_week_final(
         allowed_cleanups = [c for c in cleanup_types if c in base_by_person.get(person, {})]
         if not allowed_cleanups:
             allowed_cleanups = cleanup_types.copy()
+            
+        if "deck_brush" in allowed_cleanups:
+            allowed_cleanups.remove("deck_brush")
 
         # pick next cleanup in rotation using week index + person index
         cleanup_idx = (round_robin_index + i) % len(allowed_cleanups)
@@ -123,7 +128,9 @@ def schedule_one_week_final(
     remaining_people = [p for p in names if p not in used_people]
     for person in remaining_people:
         allowed = base_by_person.get(person, {})
-        candidate_cleanups = list(allowed.keys()) if allowed else cleanup_types
+        candidate_cleanups = list(allowed.keys()) if allowed else cleanup_types.copy()
+        if person in out_house_people and "deck_brush" in candidate_cleanups:
+            candidate_cleanups.remove("deck_brush")
         best_cleanup = min(candidate_cleanups, key=lambda c: len(cleanup_slots_assigned[c]))
         week_assignment[person] = best_cleanup
         used_people.add(person)

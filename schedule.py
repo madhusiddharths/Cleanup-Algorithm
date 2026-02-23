@@ -13,6 +13,8 @@ WEEKLY_EXCEL_FILE = "weekly_assignments.xlsx"  # pivoted output
 # Load static inputs
 # ---------------------------
 df = pd.read_excel(EXCEL_FILE)
+if "availability" not in df.columns:
+    df["availability"] = 1
 names = df["name"].tolist()
 
 with open(CONFIG_FILE, "r") as f:
@@ -20,7 +22,8 @@ with open(CONFIG_FILE, "r") as f:
 
 cleanup_types = config["cleanup_types"]
 num_weeks = config["num_weeks"]
-per_week_actual = config["per_week_actual"]
+per_week_actual = config["per_week_actual"].copy()
+min_per_week = config.get("min_per_week", {})
 base_by_inhouse = config["base_by_inhouse"]
 
 # ---------------------------
@@ -28,8 +31,11 @@ base_by_inhouse = config["base_by_inhouse"]
 # ---------------------------
 base_by_person = {}
 out_house_people = []
+unavailable_inhouse = 0
+
 for _, row in df.iterrows():
     name = row["name"]
+    is_available = int(row.get("availability", 1))
 
     # Read inhouse strictly and normalize
     try:
@@ -43,9 +49,24 @@ for _, row in df.iterrows():
 
     if inhouse in {"2", "3"}:
         base_by_person[name] = base_by_inhouse[inhouse]
+        if not is_available:
+            unavailable_inhouse += 1
     else:
         base_by_person[name] = {}  # out-of-house follow round-robin
-        out_house_people.append(name)
+        if is_available:
+            out_house_people.append(name)
+
+# Adjust per_week_actual based on unavailable in-house people
+if unavailable_inhouse > 0:
+    for _ in range(unavailable_inhouse):
+        candidates = [c for c in cleanup_types if per_week_actual.get(c, 0) > min_per_week.get(c, 0)]
+        if candidates:
+            # Pick the one with the maximum difference between actual and min
+            c_to_reduce = max(candidates, key=lambda c: per_week_actual[c] - min_per_week.get(c, 0))
+            per_week_actual[c_to_reduce] -= 1
+        else:
+            print("⚠ Warning: Cannot reduce per_week_actual further, below minimums!")
+            break
 
 # ---------------------------
 # Load or initialize checkpoint
