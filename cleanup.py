@@ -167,8 +167,15 @@ def schedule_one_week_final(
         random.shuffle(names)
 
     else:
+        # Find exactly who has the back-to-back assignment for reporting
+        b2b_people = [p for p, c in week_assignment.items() if last_cleanup.get(p) == c]
+        b2b_str = ", ".join(b2b_people) if b2b_people else "unknown"
+        
         print(f"❌ ERROR: Could not generate a schedule without back-to-back assignments after {MAX_RETRIES} retries for Week {week}.")
-        # We'll still update global state and accept it to prevent breaking the script, but we warned the user
+        print(f"⚠ Forced back-to-back assignment for: {b2b_str}. Accepting schedule to prevent script failure.")
+        
+        # We must still update the round robin index even if it failed, so the math continues cleanly next week
+        round_robin_index = temp_round_robin_index
 
     # -------------------------------------------------
     # Update global state

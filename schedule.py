@@ -12,19 +12,50 @@ WEEKLY_EXCEL_FILE = "weekly_assignments.xlsx"  # pivoted output
 # ---------------------------
 # Load static inputs
 # ---------------------------
-df = pd.read_excel(EXCEL_FILE)
+try:
+    df = pd.read_excel(EXCEL_FILE)
+except Exception as e:
+    raise RuntimeError(f"Could not read {EXCEL_FILE}. Ensure it exists and is valid. Error: {e}")
+
+required_cols = {"name", "inhouse"}
+missing_cols = required_cols - set(df.columns)
+if missing_cols:
+    raise ValueError(f"Missing required columns in {EXCEL_FILE}: {missing_cols}")
+
 if "availability" not in df.columns:
     df["availability"] = 1
+
+# Strip spaces from names to prevent duplicates/errors
+df["name"] = df["name"].astype(str).str.strip()
 names = df["name"].tolist()
 
-with open(CONFIG_FILE, "r") as f:
-    config = json.load(f)
+try:
+    with open(CONFIG_FILE, "r") as f:
+        config = json.load(f)
+except json.JSONDecodeError as e:
+    raise RuntimeError(f"Invalid JSON in {CONFIG_FILE}: {e}")
+except FileNotFoundError:
+    raise RuntimeError(f"Config file {CONFIG_FILE} not found.")
+
+required_config_keys = {"cleanup_types", "num_weeks", "per_week_actual", "base_by_inhouse"}
+missing_keys = required_config_keys - set(config.keys())
+if missing_keys:
+    raise ValueError(f"Missing required keys in {CONFIG_FILE}: {missing_keys}")
 
 cleanup_types = config["cleanup_types"]
 num_weeks = config["num_weeks"]
 per_week_actual = config["per_week_actual"].copy()
 min_per_week = config.get("min_per_week", {})
 base_by_inhouse = config["base_by_inhouse"]
+
+# Validate that config elements match cleanup_types
+for c in per_week_actual:
+    if c not in cleanup_types:
+        raise ValueError(f"Cleanup '{c}' in per_week_actual is not present in cleanup_types")
+for inhouse_level, bases in base_by_inhouse.items():
+    for c in bases:
+        if c not in cleanup_types:
+            raise ValueError(f"Cleanup '{c}' in base_by_inhouse[{inhouse_level}] is not in cleanup_types")
 
 # ---------------------------
 # Build per-person base (ONE-TIME mapping)
@@ -39,9 +70,9 @@ for _, row in df.iterrows():
 
     # Read inhouse strictly and normalize
     try:
-        inhouse_int = int(float(row["inhouse"]))
+        inhouse_int = int(float(str(row["inhouse"])))
     except ValueError:
-        raise ValueError(f"Invalid inhouse value for {name}: {row['inhouse']}")
+        raise ValueError(f"Invalid inhouse value for {name}: {row['inhouse']} (must be a number)")
 
     inhouse = str(inhouse_int).strip()
     if inhouse not in {"0", "1", "2", "3"}:
